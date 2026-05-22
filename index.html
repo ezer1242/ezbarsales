@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Texas Mixed Beverage Gross Receipts</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #ffffff;
+    --bg2: #f5f5f3;
+    --bg3: #efefed;
+    --text: #1a1a18;
+    --text2: #5f5e5a;
+    --text3: #888780;
+    --border: rgba(0,0,0,0.12);
+    --border2: rgba(0,0,0,0.22);
+    --radius: 8px;
+    --radius-lg: 12px;
+    --blue: #185FA5;
+    --teal: #0F6E56;
+    --coral: #993C1D;
+    --purple: #534AB7;
+    --amber: #854F0B;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #1c1c1a;
+      --bg2: #252523;
+      --bg3: #2e2e2b;
+      --text: #e8e6e0;
+      --text2: #b4b2a9;
+      --text3: #888780;
+      --border: rgba(255,255,255,0.1);
+      --border2: rgba(255,255,255,0.2);
+    }
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg3);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  .page {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px 20px 48px;
+  }
+
+  .hdr {
+    padding-bottom: 20px;
+    margin-bottom: 24px;
+    border-bottom: 0.5px solid var(--border2);
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .hdr h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+  }
+  .hdr p {
+    font-size: 13px;
+    color: var(--text2);
+    margin-top: 4px;
+  }
+  .live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    background: var(--bg2);
+    border: 0.5px solid var(--border2);
+    border-radius: 99px;
+    padding: 4px 12px;
+    color: var(--text2);
+    white-space: nowrap;
+  }
+  .live-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+  }
+
+  .controls-card {
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+  }
+  .ctrl-grp {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ctrl-grp label {
+    font-size: 11px;
+    color: var(--text3);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .ctrl-grp select,
+  .ctrl-grp input[type=text] {
+    font-size: 13px;
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    border: 0.5px solid var(--border2);
+    background: var(--bg2);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .ctrl-grp select:focus,
+  .ctrl-grp input[type=text]:focus {
+    border-color: var(--blue);
+  }
+  .ctrl-grp select { min-width: 140px; }
+  .ctrl-grp input[type=text] { width: 120px; }
+
+  .btn-load {
+    padding: 8px 18px;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: var(--radius);
+    border: none;
+    background: var(--blue);
+    color: #fff;
+    cursor: pointer;
+    transition: opacity 0.15s, transform 0.1s;
+    white-space: nowrap;
+    align-self: flex-end;
+  }
+  .btn-load:hover { opacity: 0.88; }
+  .btn-load:active { transform: scale(0.97); }
+  .btn-load:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .status-bar {
+    font-size: 12px;
+    color: var(--text3);
+    margin-bottom: 18px;
+    min-height: 16px;
+    padding-left: 2px;
+  }
+  .status-bar.error { color: #e24b4a; }
+
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .metric {
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 14px 16px;
+  }
+  .metric .lbl {
+    font-size: 11px;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  .metric .val {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.5px;
+    line-height: 1.1;
+  }
+  .metric .sub {
+    font-size: 11px;
+    color: var(--text3);
+    margin-top: 3px;
+  }
+
+  .two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 700px) { .two-col { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+  }
+  .panel h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text3);
+    margin-bottom: 14px;
+  }
+
+  .bar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+  .bar-row .nm {
+    width: 90px;
+    text-align: right;
+    font-size: 11px;
+    color: var(--text2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 0;
+  }
+  .bar-row .bar {
+    height: 14px;
+    border-radius: 3px;
+    min-width: 2px;
+    transition: width 0.4s ease;
+  }
+  .bar-row .amt {
+    font-size: 11px;
+    color: var(--text3);
+    white-space: nowrap;
+  }
+  .empty-msg {
+    font-size: 12px;
+    color: var(--text3);
+    padding: 16px 0;
+    text-align: center;
+  }
+
+  .map-wrap {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    margin-bottom: 6px;
+  }
+  #map-svg { width: 100%; height: 100%; display: block; }
+
+  .tooltip {
+    position: absolute;
+    background: var(--bg);
+    border: 0.5px solid var(--border2);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    z-index: 20;
+    max-width: 220px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.12);
+  }
+  .tooltip strong {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 3px;
+  }
+
+  .legend {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--text3);
+    margin-bottom: 20px;
+    padding: 0 4px;
+  }
+  .legend-bar {
+    display: flex;
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+    width: 180px;
+    flex-shrink: 0;
+  }
+  .legend-seg { flex: 1; }
+
+  .trend-panel {
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    margin-bottom: 20px;
+  }
+  .trend-panel h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text3);
+    margin-bottom: 14px;
+  }
+
+  .tbl-panel {
+    background: var(--bg);
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-lg);
+    padding: 16px 18px;
+    margin-bottom: 20px;
+  }
+  .tbl-panel h3 {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text3);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .tbl-panel h3 span {
+    font-weight: 400;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 11px;
+    color: var(--text3);
+  }
+  .tbl-wrap { overflow-x: auto; }
+  table {
+    width: 100%;
+    font-size: 12px;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 6px 8px;
+    border-bottom: 0.5px solid var(--border2);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  td {
+    padding: 7px 8px;
+    border-bottom: 0.5px solid var(--border);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--text);
+  }
+  tr:last-child td { border-bottom: none; }
+  tbody tr:hover td { background: var(--bg2); }
+
+  .footer {
+    font-size: 11px;
+    color: var(--text3);
+    text-align: center;
+    padding-top: 8px;
+  }
+  .footer a { color: var(--blue); text-decoration: none; }
+  .footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="hdr">
+    <div>
+      <h1>Texas Mixed Beverage Gross Receipts</h1>
+      <p>Beer, Wine &amp; Liquor · 2015–Present · Texas Comptroller of Public Accounts</p>
+    </div>
+    <div class="live-badge">
+      <div class="live-dot"></div>
+      Live · Socrata SODA API
+    </div>
+  </div>
+
+  <div class="controls-card">
+    <div class="ctrl-grp">
+      <label>Period</label>
+      <select id="sel-period">
+        <option value="2025-01">Jan 2025</option>
+        <option value="2024-10" selected>Oct 2024</option>
+        <option value="2024-07">Jul 2024</option>
+        <option value="2024-04">Apr 2024</option>
+        <option value="2024-01">Jan 2024</option>
+        <option value="2023-10">Oct 2023</option>
+        <option value="2023-07">Jul 2023</option>
+        <option value="2023-04">Apr 2023</option>
+        <option value="2023-01">Jan 2023</option>
+        <option value="2022-10">Oct 2022</option>
+        <option value="2022-07">Jul 2022</option>
+        <option value="2022-01">Jan 2022</option>
+      </select>
+    </div>
+    <div class="ctrl-grp">
+      <label>City</label>
+      <input type="text" id="inp-city" placeholder="e.g. AUSTIN">
+    </div>
+    <div class="ctrl-grp">
+      <label>Location zip</label>
+      <input type="text" id="inp-zip" placeholder="e.g. 78701" maxlength="5" style="width:100px">
+    </div>
+    <div class="ctrl-grp">
+      <label>County</label>
+      <input type="text" id="inp-county" placeholder="e.g. TRAVIS" style="width:110px">
+    </div>
+    <button class="btn-load" id="btn-load" onclick="loadData()">&#8635; Load live data</button>
+  </div>
+
+  <div class="status-bar" id="status">Ready — click "Load live data" to fetch from the Texas Open Data Portal.</div>
+
+  <div class="metrics">
+    <div class="metric"><div class="lbl">Total receipts</div><div class="val" id="m-total">—</div><div class="sub">beer + wine + liquor</div></div>
+    <div class="metric"><div class="lbl">Establishments</div><div class="val" id="m-count">—</div><div class="sub">reporting locations</div></div>
+    <div class="metric"><div class="lbl">Beer &amp; wine</div><div class="val" id="m-bw">—</div><div class="sub">&nbsp;</div></div>
+    <div class="metric"><div class="lbl">Liquor</div><div class="val" id="m-liq">—</div><div class="sub">&nbsp;</div></div>
+    <div class="metric"><div class="lbl">Top city</div><div class="val" id="m-city" style="font-size:15px;letter-spacing:0">—</div><div class="sub">&nbsp;</div></div>
+    <div class="metric"><div class="lbl">Avg per location</div><div class="val" id="m-avg">—</div><div class="sub">&nbsp;</div></div>
+  </div>
+
+  <div class="two-col">
+    <div class="panel">
+      <h3>Top 15 cities by total receipts</h3>
+      <div id="city-bars"><div class="empty-msg">Load data to populate.</div></div>
+    </div>
+    <div class="panel">
+      <h3>Top 12 establishments</h3>
+      <div id="est-bars"><div class="empty-msg">Load data to populate.</div></div>
+    </div>
+  </div>
+
+  <div class="map-wrap">
+    <svg id="map-svg"></svg>
+    <div class="tooltip" id="tooltip"></div>
+  </div>
+  <div class="legend">
+    <span>$0</span>
+    <div class="legend-bar" id="legend-bar"></div>
+    <span id="legend-max">—</span>
+    <span style="margin-left:auto" id="legend-note"></span>
+  </div>
+
+  <div class="trend-panel">
+    <h3>Receipts over time — top 5 counties (last 12 periods)</h3>
+    <div style="position:relative;width:100%;height:240px">
+      <canvas id="trend-chart" role="img" aria-label="Line chart showing top county receipts over 12 periods">County receipt trends over time.</canvas>
+    </div>
+  </div>
+
+  <div class="tbl-panel">
+    <h3>Top 20 establishments <span id="tbl-ctx"></span></h3>
+    <div class="tbl-wrap">
+      <table>
+        <colgroup>
+          <col style="width:24%">
+          <col style="width:13%">
+          <col style="width:9%">
+          <col style="width:11%">
+          <col style="width:12%">
+          <col style="width:11%">
+          <col style="width:10%">
+          <col style="width:10%">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>City</th>
+            <th>Loc. zip</th>
+            <th>County</th>
+            <th>Total</th>
+            <th>Beer+Wine</th>
+            <th>Liquor</th>
+            <th>Address</th>
+          </tr>
+        </thead>
+        <tbody id="detail-tbody">
+          <tr><td colspan="8" style="color:var(--text3);padding:16px 8px;text-align:center">Load data to populate.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="footer">
+    Data source: <a href="https://data.texas.gov/Government-and-Taxes/Mixed-Beverage-Gross-Receipts-Total-Receipts-Beer-/erdu-rau8" target="_blank">Texas Open Data Portal · erdu-rau8</a>
+    &nbsp;·&nbsp; Socrata SODA API &nbsp;·&nbsp; Figures in USD
+  </div>
+
+</div>
+
+<script>
+const BASE = 'https://data.texas.gov/resource/erdu-rau8.json';
+const APP_TOKEN = 'Huglpiatlbgs31bxFixcrEmby';
+
+const fmt = v => '$' + (v >= 1e9 ? (v/1e9).toFixed(2)+'B' : v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : Math.round(v));
+const fmtFull = v => '$' + Math.round(v).toLocaleString();
+const parse = v => parseFloat(v) || 0;
+
+let trendChart = null;
+let countyData = {};
+let geoFeatures = [];
+
+// Resolved after schema sniff on first load
+let COL_NAME = null;
+let COL_ADDR = null;
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status-bar' + (isError ? ' error' : '');
+}
+
+// Fetch one row with no $select to discover real column names
+async function detectColumns() {
+  if (COL_NAME) return true;
+  try {
+    const res = await fetch(`${BASE}?$limit=1`, { headers: { 'X-App-Token': APP_TOKEN } });
+    if (!res.ok) return false;
+    const rows = await res.json();
+    if (!Array.isArray(rows) || !rows.length) return false;
+    const keys = Object.keys(rows[0]);
+    const nameCandidates = ['taxpayer_name','location_name','trade_name','dba_name','name'];
+    COL_NAME = nameCandidates.find(c => keys.includes(c)) || keys.find(k => k.includes('name')) || '';
+    const addrCandidates = ['taxpayer_address','location_address','street_address','address'];
+    COL_ADDR = addrCandidates.find(c => keys.includes(c)) || keys.find(k => k.includes('address')) || '';
+    console.log('Schema detected — name col:', COL_NAME, '| addr col:', COL_ADDR, '| all keys:', keys);
+    return true;
+  } catch (e) {
+    console.error('Column detection failed:', e);
+    return false;
+  }
+}
+
+async function loadData() {
+  const btn = document.getElementById('btn-load');
+  btn.disabled = true;
+  btn.textContent = '⏳ Loading…';
+
+  const period  = document.getElementById('sel-period').value;
+  const city    = document.getElementById('inp-city').value.trim().toUpperCase();
+  const zip     = document.getElementById('inp-zip').value.trim();
+  const county  = document.getElementById('inp-county').value.trim().toUpperCase();
+
+  const [yr, mo] = period.split('-');
+  const nm = parseInt(mo) + 1;
+  const ny = nm > 12 ? parseInt(yr) + 1 : yr;
+  const nmp = String(nm > 12 ? 1 : nm).padStart(2, '0');
+  const ds = `${yr}-${mo}-01T00:00:00`;
+  const de = `${ny}-${nmp}-01T00:00:00`;
+
+  let where = `obligation_end_date>='${ds}' AND obligation_end_date<'${de}'`;
+  if (city)   where += ` AND city='${city.replace(/'/g, "''")}'`;
+  if (zip)    where += ` AND location_zip='${zip.replace(/'/g, "''")}'`;
+  if (county) where += ` AND county='${county.replace(/'/g, "''")}'`;
+
+  // Detect real column names before building query
+  setStatus('Detecting API schema…');
+  const schemaOk = await detectColumns();
+  if (!schemaOk) {
+    setStatus('Could not detect API column names — check browser console for details.', true);
+    btn.disabled = false; btn.textContent = '↻ Load live data';
+    return;
+  }
+
+  const selectCols = [COL_NAME, COL_ADDR, 'city', 'county', 'location_zip',
+    'total_receipts', 'beer_receipts', 'wine_receipts', 'liquor_receipts', 'obligation_end_date']
+    .filter(Boolean).join(',');
+
+  const params = new URLSearchParams({
+    '$limit': '5000',
+    '$where': where,
+    '$select': selectCols
+  });
+
+  const url = `${BASE}?${params.toString()}`;
+
+  setStatus('Fetching from API…');
+  try {
+    const res = await fetch(url, {
+      headers: { 'X-App-Token': APP_TOKEN }
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      setStatus(`API error ${res.status}: ${errText}`, true);
+      btn.disabled = false; btn.textContent = '↻ Load live data';
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!Array.isArray(data)) {
+      setStatus('Unexpected response from API — ' + JSON.stringify(data).slice(0, 120), true);
+      btn.disabled = false; btn.textContent = '↻ Load live data';
+      return;
+    }
+    if (data.length === 0) {
+      setStatus('No records returned for these filters — try adjusting period, city, zip, or county.', true);
+      btn.disabled = false; btn.textContent = '↻ Load live data';
+      return;
+    }
+
+    const filters = [period, city && 'city: '+city, zip && 'zip: '+zip, county && 'county: '+county].filter(Boolean).join(' · ');
+    setStatus(`${data.length.toLocaleString()} records loaded · ${filters} · live`);
+    processData(data, period, city, zip, county);
+  } catch (e) {
+    setStatus('Fetch failed: ' + e.message, true);
+    console.error(e);
+  }
+
+  btn.disabled = false;
+  btn.textContent = '↻ Load live data';
+}
+
+function processData(data, period, city, zip, county) {
+  const rows = data.map(r => ({
+    name:   (COL_NAME ? r[COL_NAME] : '') || '',
+    addr:   (COL_ADDR ? r[COL_ADDR] : '') || '',
+    city:   (r.city || '').toUpperCase(),
+    zip:    r.location_zip || '',
+    county: (r.county || '').toUpperCase(),
+    total:  parse(r.total_receipts),
+    bw:     parse(r.beer_receipts) + parse(r.wine_receipts),
+    liq:    parse(r.liquor_receipts)
+  }));
+
+  const totTotal = rows.reduce((s, r) => s + r.total, 0);
+  const totBW    = rows.reduce((s, r) => s + r.bw, 0);
+  const totLiq   = rows.reduce((s, r) => s + r.liq, 0);
+  const avg      = rows.length ? totTotal / rows.length : 0;
+
+  document.getElementById('m-total').textContent = fmt(totTotal);
+  document.getElementById('m-count').textContent = rows.length.toLocaleString();
+  document.getElementById('m-bw').textContent    = fmt(totBW);
+  document.getElementById('m-liq').textContent   = fmt(totLiq);
+  document.getElementById('m-avg').textContent   = fmt(avg);
+
+  const cityMap = {};
+  rows.forEach(r => { if (r.city) cityMap[r.city] = (cityMap[r.city] || 0) + r.total; });
+  const topCityE = Object.entries(cityMap).sort((a, b) => b[1] - a[1])[0];
+  document.getElementById('m-city').textContent = topCityE ? topCityE[0] : '—';
+
+  const topCities = Object.entries(cityMap).sort((a, b) => b[1] - a[1]).slice(0, 15);
+  const maxC = topCities.length ? topCities[0][1] : 1;
+  document.getElementById('city-bars').innerHTML = topCities.length
+    ? topCities.map(([c, v]) => `
+        <div class="bar-row">
+          <span class="nm" title="${c}">${c}</span>
+          <div class="bar" style="width:${Math.round((v/maxC)*230)}px;background:var(--blue)"></div>
+          <span class="amt">${fmt(v)}</span>
+        </div>`).join('')
+    : '<div class="empty-msg">No city data.</div>';
+
+  const topEst = [...rows].sort((a, b) => b.total - a.total).slice(0, 12);
+  const maxE = topEst.length ? topEst[0].total : 1;
+  document.getElementById('est-bars').innerHTML = topEst.length
+    ? topEst.map(r => `
+        <div class="bar-row">
+          <span class="nm" title="${r.name}">${r.name}</span>
+          <div class="bar" style="width:${Math.round((r.total/maxE)*220)}px;background:var(--teal)"></div>
+          <span class="amt">${fmt(r.total)}</span>
+        </div>`).join('')
+    : '<div class="empty-msg">No data.</div>';
+
+  countyData = {};
+  rows.forEach(r => { if (r.county) countyData[r.county] = (countyData[r.county] || 0) + r.total; });
+  drawMap();
+
+  const filterDesc = [period, city && 'city: '+city, zip && 'zip: '+zip, county && 'county: '+county].filter(Boolean).join(' · ');
+  document.getElementById('tbl-ctx').textContent = '· ' + filterDesc;
+
+  const top20 = [...rows].sort((a, b) => b.total - a.total).slice(0, 20);
+  document.getElementById('detail-tbody').innerHTML = top20.map(r => `
+    <tr>
+      <td title="${r.name}">${r.name}</td>
+      <td>${r.city}</td>
+      <td>${r.zip}</td>
+      <td>${r.county}</td>
+      <td>${fmtFull(r.total)}</td>
+      <td>${fmtFull(r.bw)}</td>
+      <td>${fmtFull(r.liq)}</td>
+      <td title="${r.addr}">${r.addr}</td>
+    </tr>`).join('');
+
+  loadTrend(period);
+}
+
+function drawMap() {
+  if (!geoFeatures.length) return;
+  const svgEl = document.getElementById('map-svg');
+  svgEl.innerHTML = '';
+  const W = svgEl.clientWidth || 1160, H = svgEl.clientHeight || 420;
+  const vals = Object.values(countyData).filter(v => v > 0);
+  if (!vals.length) return;
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const cMax = d3.quantile(vals.slice().sort(d3.ascending), 0.95) || 1;
+  const color = d3.scaleSequential(d3.interpolateBlues).domain([0, cMax]);
+
+  const svg = d3.select('#map-svg');
+  const proj = d3.geoAlbersUsa().fitSize([W, H], { type: 'FeatureCollection', features: geoFeatures });
+  const path = d3.geoPath(proj);
+  const tip = document.getElementById('tooltip');
+
+  svg.selectAll('path')
+    .data(geoFeatures)
+    .join('path')
+    .attr('d', path)
+    .attr('stroke', isDark ? 'rgba(255,255,255,0.15)' : '#fff')
+    .attr('stroke-width', 0.5)
+    .attr('fill', d => {
+      const n = (d.properties.name || '').toUpperCase();
+      return countyData[n] ? color(countyData[n]) : (isDark ? '#2e2e2b' : '#efefed');
+    })
+    .on('mousemove', (evt, d) => {
+      const n = (d.properties.name || '').toUpperCase();
+      const v = countyData[n] || 0;
+      const rect = svgEl.getBoundingClientRect();
+      tip.style.display = 'block';
+      tip.style.left = (evt.clientX - rect.left + 14) + 'px';
+      tip.style.top  = (evt.clientY - rect.top - 12) + 'px';
+      tip.innerHTML = `<strong>${n} County</strong>${fmtFull(v)} total receipts`;
+    })
+    .on('mouseleave', () => { tip.style.display = 'none'; });
+
+  const stops = 6;
+  document.getElementById('legend-bar').innerHTML =
+    Array.from({ length: stops }, (_, i) =>
+      `<div class="legend-seg" style="background:${color(cMax * i / (stops-1))}"></div>`
+    ).join('');
+  document.getElementById('legend-max').textContent = fmt(cMax) + ' (95th pct)';
+  document.getElementById('legend-note').textContent = 'Hover counties for detail';
+}
+
+async function loadTrend(currentPeriod) {
+  const [yr, mo] = currentPeriod.split('-');
+  const periods = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(parseInt(yr), parseInt(mo) - 1 - i, 1);
+    periods.push(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`);
+  }
+
+  const topCounties = Object.entries(countyData)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(e => e[0]);
+  if (!topCounties.length) return;
+
+  const promises = periods.map(p => {
+    const [y2, m2] = p.split('-');
+    const nm = parseInt(m2) + 1;
+    const ny = nm > 12 ? parseInt(y2) + 1 : y2;
+    const nmp = String(nm > 12 ? 1 : nm).padStart(2, '0');
+    const ds = `${y2}-${m2}-01T00:00:00`;
+    const de = `${ny}-${nmp}-01T00:00:00`;
+    const cf = topCounties.map(c => `county='${c.replace(/'/g,"''")}'`).join(' OR ');
+    const params = new URLSearchParams({
+      '$limit': '2000',
+      '$where': `obligation_end_date>='${ds}' AND obligation_end_date<'${de}' AND (${cf})`,
+      '$select': 'county,total_receipts'
+    });
+    return fetch(`${BASE}?${params}`, { headers: { 'X-App-Token': APP_TOKEN } })
+      .then(r => r.json())
+      .catch(() => []);
+  });
+
+  const results = await Promise.all(promises);
+  const palette = ['#185FA5', '#0F6E56', '#993C1D', '#534AB7', '#854F0B'];
+
+  const datasets = topCounties.map((county, ci) => ({
+    label: county,
+    data: results.map(rows =>
+      Math.round(
+        (Array.isArray(rows) ? rows : [])
+          .filter(r => (r.county || '').toUpperCase() === county)
+          .reduce((a, r) => a + parse(r.total_receipts), 0)
+      )
+    ),
+    borderColor: palette[ci],
+    backgroundColor: 'transparent',
+    tension: 0.35,
+    borderWidth: 2,
+    pointRadius: 3
+  }));
+
+  if (trendChart) trendChart.destroy();
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const gc = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
+  const tc = isDark ? '#888780' : '#888780';
+
+  trendChart = new Chart(document.getElementById('trend-chart'), {
+    type: 'line',
+    data: { labels: periods, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          labels: { color: tc, font: { size: 11 }, boxWidth: 12, padding: 16 }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: tc, font: { size: 10 }, maxRotation: 45, autoSkip: false },
+          grid: { color: gc }
+        },
+        y: {
+          ticks: { color: tc, font: { size: 10 }, callback: v => fmt(v) },
+          grid: { color: gc }
+        }
+      }
+    }
+  });
+}
+
+async function initMap() {
+  const raw = await d3.json('https://cdn.jsdelivr.net/npm/us-atlas@3/counties-10m.json');
+  const counties = topojson.feature(raw, raw.objects.counties).features.filter(f => String(f.id).startsWith('48'));
+
+  const nameMap = {
+    '48001':'ANDERSON','48003':'ANDREWS','48005':'ANGELINA','48007':'ARANSAS','48009':'ARCHER',
+    '48011':'ARMSTRONG','48013':'ATASCOSA','48015':'AUSTIN','48017':'BAILEY','48019':'BANDERA',
+    '48021':'BASTROP','48023':'BAYLOR','48025':'BEE','48027':'BELL','48029':'BEXAR',
+    '48031':'BLANCO','48033':'BORDEN','48035':'BOSQUE','48037':'BOWIE','48039':'BRAZORIA',
+    '48041':'BRAZOS','48043':'BREWSTER','48045':'BRISCOE','48047':'BROOKS','48049':'BROWN',
+    '48051':'BURLESON','48053':'BURNET','48055':'CALDWELL','48057':'CALHOUN','48059':'CALLAHAN',
+    '48061':'CAMERON','48063':'CAMP','48065':'CARSON','48067':'CASS','48069':'CASTRO',
+    '48071':'CHAMBERS','48073':'CHEROKEE','48075':'CHILDRESS','48077':'CLAY','48079':'COCHRAN',
+    '48081':'COKE','48083':'COLEMAN','48085':'COLLIN','48087':'COLLINGSWORTH','48089':'COLORADO',
+    '48091':'COMAL','48093':'COMANCHE','48095':'CONCHO','48097':'COOKE','48101':'COTTLE',
+    '48103':'CRANE','48105':'CROCKETT','48107':'CROSBY','48109':'CULBERSON','48111':'DALLAM',
+    '48113':'DALLAS','48115':'DAWSON','48117':'DEAF SMITH','48119':'DELTA','48121':'DENTON',
+    '48123':'DEWITT','48125':'DICKENS','48127':'DIMMIT','48129':'DONLEY','48131':'DUVAL',
+    '48133':'EASTLAND','48135':'ECTOR','48137':'EDWARDS','48139':'ELLIS','48141':'EL PASO',
+    '48143':'ERATH','48145':'FALLS','48147':'FANNIN','48149':'FAYETTE','48151':'FISHER',
+    '48153':'FLOYD','48155':'FOARD','48157':'FORT BEND','48159':'FRANKLIN','48161':'FREESTONE',
+    '48163':'FRIO','48165':'GAINES','48167':'GALVESTON','48169':'GARZA','48171':'GILLESPIE',
+    '48173':'GLASSCOCK','48175':'GOLIAD','48177':'GONZALES','48179':'GRAY','48181':'GRAYSON',
+    '48183':'GREGG','48185':'GRIMES','48187':'GUADALUPE','48189':'HALE','48191':'HALL',
+    '48193':'HAMILTON','48195':'HANSFORD','48197':'HARDEMAN','48199':'HARDIN','48201':'HARRIS',
+    '48203':'HARRISON','48205':'HARTLEY','48207':'HASKELL','48209':'HAYS','48211':'HEMPHILL',
+    '48213':'HENDERSON','48215':'HIDALGO','48217':'HILL','48219':'HOCKLEY','48221':'HOOD',
+    '48223':'HOPKINS','48225':'HOUSTON','48227':'HOWARD','48229':'HUDSPETH','48231':'HUNT',
+    '48233':'HUTCHINSON','48235':'IRION','48237':'JACK','48239':'JACKSON','48241':'JASPER',
+    '48243':'JEFF DAVIS','48245':'JEFFERSON','48247':'JIM HOGG','48249':'JIM WELLS','48251':'JOHNSON',
+    '48253':'JONES','48255':'KARNES','48257':'KAUFMAN','48259':'KENDALL','48261':'KENEDY',
+    '48263':'KENT','48265':'KERR','48267':'KIMBLE','48269':'KING','48271':'KINNEY',
+    '48273':'KLEBERG','48275':'KNOX','48277':'LAMAR','48279':'LAMB','48281':'LAMPASAS',
+    '48283':'LA SALLE','48285':'LAVACA','48287':'LEE','48289':'LEON','48291':'LIBERTY',
+    '48293':'LIMESTONE','48295':'LIPSCOMB','48297':'LIVE OAK','48299':'LLANO','48301':'LOVING',
+    '48303':'LUBBOCK','48305':'LYNN','48307':'MCCULLOCH','48309':'MCLENNAN','48311':'MCMULLEN',
+    '48313':'MADISON','48315':'MARION','48317':'MARTIN','48319':'MASON','48321':'MATAGORDA',
+    '48323':'MAVERICK','48325':'MEDINA','48327':'MENARD','48329':'MIDLAND','48331':'MILAM',
+    '48333':'MILLS','48335':'MITCHELL','48337':'MONTAGUE','48339':'MONTGOMERY','48341':'MOORE',
+    '48343':'MORRIS','48345':'MOTLEY','48347':'NACOGDOCHES','48349':'NAVARRO','48351':'NEWTON',
+    '48353':'NOLAN','48355':'NUECES','48357':'OCHILTREE','48359':'OLDHAM','48361':'ORANGE',
+    '48363':'PALO PINTO','48365':'PANOLA','48367':'PARKER','48369':'PARMER','48371':'PECOS',
+    '48373':'POLK','48375':'POTTER','48377':'PRESIDIO','48379':'RAINS','48381':'RANDALL',
+    '48383':'REAGAN','48385':'REAL','48387':'RED RIVER','48389':'REEVES','48391':'REFUGIO',
+    '48393':'ROBERTS','48395':'ROBERTSON','48397':'ROCKWALL','48399':'RUNNELS','48401':'RUSK',
+    '48403':'SABINE','48405':'SAN AUGUSTINE','48407':'SAN JACINTO','48409':'SAN PATRICIO',
+    '48411':'SAN SABA','48413':'SCHLEICHER','48415':'SCURRY','48417':'SHACKELFORD','48419':'SHELBY',
+    '48421':'SHERMAN','48423':'SMITH','48425':'SOMERVELL','48427':'STARR','48429':'STEPHENS',
+    '48431':'STERLING','48433':'STONEWALL','48435':'SUTTON','48437':'SWISHER','48439':'TARRANT',
+    '48441':'TAYLOR','48443':'TERRELL','48445':'TERRY','48447':'THROCKMORTON','48449':'TITUS',
+    '48451':'TOM GREEN','48453':'TRAVIS','48455':'TRINITY','48457':'TYLER','48459':'UPSHUR',
+    '48461':'UPTON','48463':'UVALDE','48465':'VAL VERDE','48467':'VAN ZANDT','48469':'VICTORIA',
+    '48471':'WALKER','48473':'WALLER','48475':'WARD','48477':'WASHINGTON','48479':'WEBB',
+    '48481':'WHARTON','48483':'WHEELER','48485':'WICHITA','48487':'WILBARGER','48489':'WILLACY',
+    '48491':'WILLIAMSON','48493':'WILSON','48495':'WINKLER','48497':'WISE','48499':'WOOD',
+    '48501':'YOAKUM','48503':'YOUNG','48505':'ZAPATA','48507':'ZAVALA'
+  };
+
+  geoFeatures = counties.map(f => ({
+    ...f,
+    properties: { ...f.properties, name: nameMap[String(f.id)] || String(f.id) }
+  }));
+}
+
+initMap();
+</script>
+</body>
+</html>
