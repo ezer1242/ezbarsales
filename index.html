@@ -511,7 +511,7 @@
 </div>
 
 <script>
-const BASE = 'https://data.texas.gov/resource/erdu-rau8.json';
+const BASE = 'https://data.texas.gov/resource/naix-2893.json';
 const APP_TOKEN = 'Huglpiatlbgs31bxFixcrEmby';
 
 const fmt = v => '$' + (v >= 1e9 ? (v/1e9).toFixed(2)+'B' : v >= 1e6 ? (v/1e6).toFixed(1)+'M' : v >= 1e3 ? (v/1e3).toFixed(0)+'K' : Math.round(v));
@@ -537,13 +537,13 @@ async function loadData() {
   const nm = parseInt(mo) + 1;
   const ny = nm > 12 ? parseInt(yr) + 1 : yr;
   const nmp = String(nm > 12 ? 1 : nm).padStart(2, '0');
-  const ds = `${yr}-${mo}-01T00:00:00`;
-  const de = `${ny}-${nmp}-01T00:00:00`;
-
-  let where = `obligation_end_date>='${ds}' AND obligation_end_date<'${de}'`;
-  if (city)   where += ` AND city='${city.replace(/'/g, "''")}'`;
+  // Date field uses plain YYYY-MM-DD format (no time component)
+  const dsDate = `${yr}-${mo}-01`;
+  const deDate = `${ny}-${nmp}-01`;
+  let where = `obligation_end_date_yyyymmdd>='${dsDate}' AND obligation_end_date_yyyymmdd<'${deDate}'`;
+  if (city)   where += ` AND location_city='${city.replace(/'/g, "''")}'`;
   if (zip)    where += ` AND location_zip='${zip.replace(/'/g, "''")}'`;
-  if (county) where += ` AND county='${county.replace(/'/g, "''")}'`;
+  if (county) where += ` AND location_county='${county.replace(/'/g, "''")}'`;
 
   // No $select — let the API return all columns; we pick what we need in processData
   const params = new URLSearchParams({
@@ -603,9 +603,9 @@ function processData(data, period, city, zip, county) {
   const rows = data.map(r => ({
     name:   (nameCol ? r[nameCol] : '') || '',
     addr:   (addrCol ? r[addrCol] : '') || '',
-    city:   (r.city || '').toUpperCase(),
+    city:   (r.location_city || '').toUpperCase(),
     zip:    r.location_zip || '',
-    county: (r.county || '').toUpperCase(),
+    county: (r.location_county || '').toUpperCase(),
     total:  parse(r.total_receipts),
     bw:     parse(r.beer_receipts) + parse(r.wine_receipts),
     liq:    parse(r.liquor_receipts)
@@ -738,13 +738,13 @@ async function loadTrend(currentPeriod) {
     const nm = parseInt(m2) + 1;
     const ny = nm > 12 ? parseInt(y2) + 1 : y2;
     const nmp = String(nm > 12 ? 1 : nm).padStart(2, '0');
-    const ds = `${y2}-${m2}-01T00:00:00`;
-    const de = `${ny}-${nmp}-01T00:00:00`;
-    const cf = topCounties.map(c => `county='${c.replace(/'/g,"''")}'`).join(' OR ');
+    const ds = `${y2}-${m2}-01`;
+    const de = `${ny}-${nmp}-01`;
+    const cf = topCounties.map(c => `location_county='${c.replace(/'/g,"''")}'`).join(' OR ');
     const params = new URLSearchParams({
       '$limit': '2000',
-      '$where': `obligation_end_date>='${ds}' AND obligation_end_date<'${de}' AND (${cf})`,
-      '$select': 'county,total_receipts'
+      '$where': `obligation_end_date_yyyymmdd>='${ds}' AND obligation_end_date_yyyymmdd<'${de}' AND (${cf})`,
+      '$select': 'location_county,total_receipts'
     });
     return fetch(`${BASE}?${params}`, { headers: { 'X-App-Token': APP_TOKEN } })
       .then(r => r.json())
@@ -759,7 +759,7 @@ async function loadTrend(currentPeriod) {
     data: results.map(rows =>
       Math.round(
         (Array.isArray(rows) ? rows : [])
-          .filter(r => (r.county || '').toUpperCase() === county)
+          .filter(r => (r.location_county || '').toUpperCase() === county)
           .reduce((a, r) => a + parse(r.total_receipts), 0)
       )
     ),
