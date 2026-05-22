@@ -522,67 +522,8 @@ let trendChart = null;
 let countyData = {};
 let geoFeatures = [];
 
-// Known candidate column names for name and address fields.
-// The dashboard tries each in order and uses the first one that works.
-const NAME_CANDIDATES = ['taxpayer_name','location_name','trade_name','dba_name'];
-const ADDR_CANDIDATES = ['taxpayer_address','location_address','street_address'];
-
-// Resolved after schema sniff on first load
-let COL_NAME = null;
-let COL_ADDR = null;
-
-function setStatus(msg, isError) {
-  const el = document.getElementById('status');
-  el.textContent = msg;
-  el.className = 'status-bar' + (isError ? ' error' : '');
-}
-
-// Try each name/address candidate until one doesn't return a 400
-async function detectColumns(sampleWhere) {
-  if (COL_NAME && COL_ADDR) return true;
-
-  // First: try to fetch a single row with no $select to read real keys
-  try {
-    const probeUrl = `${BASE}?$limit=1&$where=${encodeURIComponent(sampleWhere)}`;
-    const res = await fetch(probeUrl, { headers: { 'X-App-Token': APP_TOKEN } });
-    if (res.ok) {
-      const rows = await res.json();
-      if (Array.isArray(rows) && rows.length > 0) {
-        const keys = Object.keys(rows[0]);
-        console.log('Schema probe succeeded. All columns:', keys);
-        COL_NAME = NAME_CANDIDATES.find(c => keys.includes(c)) || keys.find(k => k.includes('name')) || NAME_CANDIDATES[0];
-        COL_ADDR = ADDR_CANDIDATES.find(c => keys.includes(c)) || keys.find(k => k.includes('address')) || ADDR_CANDIDATES[0];
-        console.log('Using — name:', COL_NAME, '| addr:', COL_ADDR);
-        return true;
-      }
-    }
-  } catch(e) { console.warn('Schema probe failed, falling back to column trial:', e); }
-
-  // Fallback: try each name candidate with a $select probe until one returns 200
-  for (const nameCol of NAME_CANDIDATES) {
-    for (const addrCol of ADDR_CANDIDATES) {
-      try {
-        const testParams = new URLSearchParams({
-          '$limit': '1',
-          '$where': sampleWhere,
-          '$select': `${nameCol},${addrCol},city,total_receipts`
-        });
-        const res = await fetch(`${BASE}?${testParams}`, { headers: { 'X-App-Token': APP_TOKEN } });
-        if (res.ok) {
-          COL_NAME = nameCol;
-          COL_ADDR = addrCol;
-          console.log('Column trial succeeded — name:', COL_NAME, '| addr:', COL_ADDR);
-          return true;
-        }
-      } catch(e) { /* try next */ }
-    }
-  }
-
-  console.error('All column candidates failed.');
-  return false;
-}
-
 async function loadData() {
+ {
   const btn = document.getElementById('btn-load');
   btn.disabled = true;
   btn.textContent = '⏳ Loading…';
@@ -604,23 +545,10 @@ async function loadData() {
   if (zip)    where += ` AND location_zip='${zip.replace(/'/g, "''")}'`;
   if (county) where += ` AND county='${county.replace(/'/g, "''")}'`;
 
-  // Detect real column names before building the full query
-  setStatus('Detecting API schema…');
-  const schemaOk = await detectColumns(`obligation_end_date>='${ds}' AND obligation_end_date<'${de}'`);
-  if (!schemaOk) {
-    setStatus('Could not detect API column names — check browser console for details.', true);
-    btn.disabled = false; btn.textContent = '↻ Load live data';
-    return;
-  }
-
-  const selectCols = [COL_NAME, COL_ADDR, 'city', 'county', 'location_zip',
-    'total_receipts', 'beer_receipts', 'wine_receipts', 'liquor_receipts', 'obligation_end_date']
-    .filter(Boolean).join(',');
-
+  // No $select — let the API return all columns; we pick what we need in processData
   const params = new URLSearchParams({
     '$limit': '5000',
-    '$where': where,
-    '$select': selectCols
+    '$where': where
   });
 
   const url = `${BASE}?${params.toString()}`;
@@ -664,9 +592,17 @@ async function loadData() {
 }
 
 function processData(data, period, city, zip, county) {
+  // Pick name/address from whatever columns the API actually returned
+  const sampleKeys = data.length ? Object.keys(data[0]) : [];
+  const pickCol = (candidates, fallback) =>
+    candidates.find(c => sampleKeys.includes(c)) || sampleKeys.find(k => k.includes(fallback)) || '';
+  const nameCol = pickCol(['taxpayer_name','location_name','trade_name','dba_name'], 'name');
+  const addrCol = pickCol(['taxpayer_address','location_address','street_address'], 'address');
+  console.log('Data columns present:', sampleKeys, '| using name:', nameCol, '| addr:', addrCol);
+
   const rows = data.map(r => ({
-    name:   (COL_NAME ? r[COL_NAME] : '') || '',
-    addr:   (COL_ADDR ? r[COL_ADDR] : '') || '',
+    name:   (nameCol ? r[nameCol] : '') || '',
+    addr:   (addrCol ? r[addrCol] : '') || '',
     city:   (r.city || '').toUpperCase(),
     zip:    r.location_zip || '',
     county: (r.county || '').toUpperCase(),
