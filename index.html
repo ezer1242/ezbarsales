@@ -522,6 +522,11 @@ let trendChart = null;
 let countyData = {};
 let geoFeatures = [];
 
+// Known candidate column names for name and address fields.
+// The dashboard tries each in order and uses the first one that works.
+const NAME_CANDIDATES = ['taxpayer_name','location_name','trade_name','dba_name'];
+const ADDR_CANDIDATES = ['taxpayer_address','location_address','street_address'];
+
 // Resolved after schema sniff on first load
 let COL_NAME = null;
 let COL_ADDR = null;
@@ -532,25 +537,49 @@ function setStatus(msg, isError) {
   el.className = 'status-bar' + (isError ? ' error' : '');
 }
 
-// Fetch one row with no $select to discover real column names
-async function detectColumns() {
-  if (COL_NAME) return true;
+// Try each name/address candidate until one doesn't return a 400
+async function detectColumns(sampleWhere) {
+  if (COL_NAME && COL_ADDR) return true;
+
+  // First: try to fetch a single row with no $select to read real keys
   try {
-    const res = await fetch(`${BASE}?$limit=1`, { headers: { 'X-App-Token': APP_TOKEN } });
-    if (!res.ok) return false;
-    const rows = await res.json();
-    if (!Array.isArray(rows) || !rows.length) return false;
-    const keys = Object.keys(rows[0]);
-    const nameCandidates = ['taxpayer_name','location_name','trade_name','dba_name','name'];
-    COL_NAME = nameCandidates.find(c => keys.includes(c)) || keys.find(k => k.includes('name')) || '';
-    const addrCandidates = ['taxpayer_address','location_address','street_address','address'];
-    COL_ADDR = addrCandidates.find(c => keys.includes(c)) || keys.find(k => k.includes('address')) || '';
-    console.log('Schema detected — name col:', COL_NAME, '| addr col:', COL_ADDR, '| all keys:', keys);
-    return true;
-  } catch (e) {
-    console.error('Column detection failed:', e);
-    return false;
+    const probeUrl = `${BASE}?$limit=1&$where=${encodeURIComponent(sampleWhere)}`;
+    const res = await fetch(probeUrl, { headers: { 'X-App-Token': APP_TOKEN } });
+    if (res.ok) {
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 0) {
+        const keys = Object.keys(rows[0]);
+        console.log('Schema probe succeeded. All columns:', keys);
+        COL_NAME = NAME_CANDIDATES.find(c => keys.includes(c)) || keys.find(k => k.includes('name')) || NAME_CANDIDATES[0];
+        COL_ADDR = ADDR_CANDIDATES.find(c => keys.includes(c)) || keys.find(k => k.includes('address')) || ADDR_CANDIDATES[0];
+        console.log('Using — name:', COL_NAME, '| addr:', COL_ADDR);
+        return true;
+      }
+    }
+  } catch(e) { console.warn('Schema probe failed, falling back to column trial:', e); }
+
+  // Fallback: try each name candidate with a $select probe until one returns 200
+  for (const nameCol of NAME_CANDIDATES) {
+    for (const addrCol of ADDR_CANDIDATES) {
+      try {
+        const testParams = new URLSearchParams({
+          '$limit': '1',
+          '$where': sampleWhere,
+          '$select': `${nameCol},${addrCol},city,total_receipts`
+        });
+        const res = await fetch(`${BASE}?${testParams}`, { headers: { 'X-App-Token': APP_TOKEN } });
+        if (res.ok) {
+          COL_NAME = nameCol;
+          COL_ADDR = addrCol;
+          console.log('Column trial succeeded — name:', COL_NAME, '| addr:', COL_ADDR);
+          return true;
+        }
+      } catch(e) { /* try next */ }
+    }
   }
+
+  console.error('All column candidates failed.');
+  return false;
 }
 
 async function loadData() {
@@ -575,9 +604,9 @@ async function loadData() {
   if (zip)    where += ` AND location_zip='${zip.replace(/'/g, "''")}'`;
   if (county) where += ` AND county='${county.replace(/'/g, "''")}'`;
 
-  // Detect real column names before building query
+  // Detect real column names before building the full query
   setStatus('Detecting API schema…');
-  const schemaOk = await detectColumns();
+  const schemaOk = await detectColumns(`obligation_end_date>='${ds}' AND obligation_end_date<'${de}'`);
   if (!schemaOk) {
     setStatus('Could not detect API column names — check browser console for details.', true);
     btn.disabled = false; btn.textContent = '↻ Load live data';
