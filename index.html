@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Texas Mixed Beverage Gross Receipts</title>
+<title><!-- v3 -->Texas Mixed Beverage Gross Receipts</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/topojson/3.0.2/topojson.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -521,6 +521,13 @@ const parse = v => parseFloat(v) || 0;
 let trendChart = null;
 let countyData = {};
 let geoFeatures = [];
+
+function setStatus(msg, isError) {
+  const el = document.getElementById('status');
+  if (!el) return;
+  el.textContent = msg;
+  el.className = 'status-bar' + (isError ? ' error' : '');
+}
 
 async function loadData() {
   const btn = document.getElementById('btn-load');
