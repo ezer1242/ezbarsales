@@ -1,6 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title><!-- v3 -->Texas Mixed Beverage Gross Receipts</title>
@@ -447,8 +450,8 @@
       <div id="city-bars"><div class="empty-msg">Load data to populate.</div></div>
     </div>
     <div class="panel">
-      <h3>Top 12 establishments</h3>
-      <div id="est-bars"><div class="empty-msg">Load data to populate.</div></div>
+      <h3>Top 15 locations <span style="font-size:10px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3)">· click to drill down</span></h3>
+      <ul class="loc-list" id="loc-list"><li class="empty-msg" style="list-style:none;padding:16px 0;text-align:center;font-size:12px;color:var(--text3)">Load data to populate.</li></ul>
     </div>
   </div>
 
@@ -633,27 +636,21 @@ function processData(data, period, city, zip, county) {
   const topCityE = Object.entries(cityMap).sort((a, b) => b[1] - a[1])[0];
   document.getElementById('m-city').textContent = topCityE ? topCityE[0] : '—';
 
-  const topCities = Object.entries(cityMap).sort((a, b) => b[1] - a[1]).slice(0, 15);
-  const maxC = topCities.length ? topCities[0][1] : 1;
-  document.getElementById('city-bars').innerHTML = topCities.length
-    ? topCities.map(([c, v]) => `
-        <div class="bar-row">
-          <span class="nm" title="${c}">${c}</span>
-          <div class="bar" style="width:${Math.round((v/maxC)*230)}px;background:var(--blue)"></div>
-          <span class="amt">${fmt(v)}</span>
-        </div>`).join('')
-    : '<div class="empty-msg">No city data.</div>';
-
-  const topEst = [...rows].sort((a, b) => b.total - a.total).slice(0, 12);
-  const maxE = topEst.length ? topEst[0].total : 1;
-  document.getElementById('est-bars').innerHTML = topEst.length
-    ? topEst.map(r => `
-        <div class="bar-row">
-          <span class="nm" title="${r.name}">${r.name}</span>
-          <div class="bar" style="width:${Math.round((r.total/maxE)*220)}px;background:var(--teal)"></div>
-          <span class="amt">${fmt(r.total)}</span>
-        </div>`).join('')
-    : '<div class="empty-msg">No data.</div>';
+  // Top-15 locations stored globally so onclick="drillLocation(i)" can look up by index
+  window._locData = [...rows].sort((a,b) => b.total - a.total).slice(0,15);
+  const maxLoc = window._locData[0] ? window._locData[0].total : 1;
+  document.getElementById('loc-list').innerHTML = window._locData.length
+    ? window._locData.map((r,i) => `
+        <li class="loc-item" onclick="drillLocation(${i})">
+          <span class="loc-rank">${i+1}</span>
+          <div class="loc-info">
+            <div class="loc-name" title="${r.name}">${r.name || '(unnamed)'}</div>
+            <div class="loc-sub">${[r.city, r.zip, r.addr].filter(Boolean).join(' · ')}</div>
+          </div>
+          <div class="loc-bar-wrap"><div class="loc-bar" style="width:${Math.max(4,(r.total/maxLoc*100)).toFixed(0)}%"></div></div>
+          <span class="loc-amt">${fmt(r.total)}</span>
+        </li>`).join('')
+    : '<li style="list-style:none;padding:16px 0;text-align:center;font-size:12px;color:var(--text3)">No data.</li>';
 
   countyData = {};
   rows.forEach(r => { if (r.county) countyData[r.county] = (countyData[r.county] || 0) + r.total; });
@@ -662,9 +659,9 @@ function processData(data, period, city, zip, county) {
   const filterDesc = [period, city && 'city: '+city, zip && 'zip: '+zip, county && 'county: '+county].filter(Boolean).join(' · ');
   document.getElementById('tbl-ctx').textContent = '· ' + filterDesc;
 
-  const top20 = [...rows].sort((a, b) => b.total - a.total).slice(0, 20);
-  document.getElementById('detail-tbody').innerHTML = top20.map(r => `
-    <tr>
+  window._tblData = [...rows].sort((a, b) => b.total - a.total).slice(0, 20);
+  document.getElementById('detail-tbody').innerHTML = window._tblData.map((r,i) => `
+    <tr class="clickable" onclick="drillFromTable(${i})">
       <td title="${r.name}">${r.name}</td>
       <td>${r.city}</td>
       <td>${r.zip}</td>
@@ -802,6 +799,122 @@ async function loadTrend(currentPeriod) {
           ticks: { color: tc, font: { size: 10 }, callback: v => fmt(v) },
           grid: { color: gc }
         }
+      }
+    }
+  });
+}
+
+let drillChart = null;
+
+function closeDrill() {
+  document.getElementById('drill-panel').classList.remove('visible');
+  if (drillChart) { drillChart.destroy(); drillChart = null; }
+}
+
+function drillFromTable(i) {
+  drillLocation(i, window._tblData);
+}
+
+async function drillLocation(idx, store) {
+  const src = (typeof store !== 'undefined' && Array.isArray(store)) ? store : window._locData;
+  const loc = src[idx];
+  if (!loc) { console.error('drillLocation: no item at index', idx); return; }
+
+  const panel = document.getElementById('drill-panel');
+  panel.classList.add('visible');
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  document.getElementById('drill-name').textContent = loc.name || '(unnamed)';
+  document.getElementById('drill-meta').textContent =
+    [loc.addr, loc.city, loc.zip, loc.county ? loc.county + ' County' : ''].filter(Boolean).join(' · ');
+  document.getElementById('drill-status').textContent = 'Loading 24-month history…';
+  ['dd-total','dd-best','dd-avg','dd-bw','dd-liq'].forEach(function(id) {
+    document.getElementById(id).textContent = '…';
+  });
+  if (drillChart) { drillChart.destroy(); drillChart = null; }
+  document.getElementById('drill-tbody').innerHTML = '<tr><td colspan="4" style="color:var(--text3);text-align:center;padding:12px">Loading…</td></tr>';
+
+  const selPeriod = document.getElementById('sel-period').value;
+  const yrmo = selPeriod.split('-');
+  const baseYr = parseInt(yrmo[0]), baseMo = parseInt(yrmo[1]);
+  const periods = [];
+  for (var i = 23; i >= 0; i--) {
+    var d = new Date(baseYr, baseMo - 1 - i, 1);
+    periods.push(d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'));
+  }
+
+  var fetches = periods.map(function(p) {
+    var parts = p.split('-'), y2 = parts[0], m2 = parts[1];
+    var nm = parseInt(m2) + 1;
+    var ny2 = nm > 12 ? (parseInt(y2)+1).toString() : y2;
+    var nmp = String(nm > 12 ? 1 : nm).padStart(2,'0');
+    var ds = y2 + '-' + m2 + '-01';
+    var de = ny2 + '-' + nmp + '-01';
+    var safeName = (loc.name || '').replace(/'/g, "''");
+    var where = "obligation_end_date_yyyymmdd>='" + ds + "' AND obligation_end_date_yyyymmdd<'" + de + "' AND location_name='" + safeName + "'";
+    if (loc.zip)       where += " AND location_zip='"  + loc.zip.replace(/'/g,"''")  + "'";
+    else if (loc.city) where += " AND location_city='" + loc.city.replace(/'/g,"''") + "'";
+    var params = new URLSearchParams({'$limit':'5','$where':where,'$select':'total_receipts,beer_receipts,wine_receipts,liquor_receipts'});
+    return fetch(BASE + '?' + params.toString(), { headers: { 'X-App-Token': APP_TOKEN } })
+      .then(function(r) { return r.ok ? r.json() : []; })
+      .catch(function() { return []; });
+  });
+
+  var results = await Promise.all(fetches);
+  var monthData = periods.map(function(p, i) {
+    var rws = Array.isArray(results[i]) ? results[i] : [];
+    var total = rws.reduce(function(a,r){ return a + parse(r.total_receipts); }, 0);
+    var bw    = rws.reduce(function(a,r){ return a + parse(r.beer_receipts) + parse(r.wine_receipts); }, 0);
+    var liq   = rws.reduce(function(a,r){ return a + parse(r.liquor_receipts); }, 0);
+    return { p:p, total:total, bw:bw, liq:liq };
+  });
+
+  var nonZero = monthData.filter(function(m){ return m.total > 0; });
+  if (!nonZero.length) {
+    document.getElementById('drill-status').textContent = 'No historical records found for this location.';
+    ['dd-total','dd-best','dd-avg','dd-bw','dd-liq'].forEach(function(id){ document.getElementById(id).textContent = '—'; });
+    document.getElementById('drill-tbody').innerHTML = '<tr><td colspan="4" style="color:var(--text3);text-align:center;padding:12px">No data found.</td></tr>';
+    return;
+  }
+
+  var grandTotal = nonZero.reduce(function(a,m){ return a+m.total; }, 0);
+  var bestMonth  = nonZero.reduce(function(a,m){ return m.total > a.total ? m : a; });
+  var grandBw    = nonZero.reduce(function(a,m){ return a+m.bw; }, 0);
+  var grandLiq   = nonZero.reduce(function(a,m){ return a+m.liq; }, 0);
+
+  document.getElementById('dd-total').textContent = fmtFull(grandTotal);
+  document.getElementById('dd-best').textContent  = fmt(bestMonth.total) + ' (' + bestMonth.p + ')';
+  document.getElementById('dd-avg').textContent   = fmt(grandTotal / nonZero.length);
+  document.getElementById('dd-bw').textContent    = fmtFull(grandBw);
+  document.getElementById('dd-liq').textContent   = fmtFull(grandLiq);
+  document.getElementById('drill-status').textContent = nonZero.length + ' months with data · ' + periods[0] + ' → ' + periods[periods.length-1];
+
+  document.getElementById('drill-tbody').innerHTML = monthData.slice().reverse()
+    .filter(function(m){ return m.total > 0; })
+    .map(function(m){ return '<tr><td>'+m.p+'</td><td>'+fmtFull(m.total)+'</td><td>'+fmtFull(m.bw)+'</td><td>'+fmtFull(m.liq)+'</td></tr>'; })
+    .join('');
+
+  var isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  var gc = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.06)';
+  var tc = isDark ? '#888780' : '#888780';
+  drillChart = new Chart(document.getElementById('drill-chart'), {
+    type: 'bar',
+    data: {
+      labels: monthData.map(function(m){ return m.p; }),
+      datasets: [
+        { label:'Beer+Wine', data:monthData.map(function(m){ return m.bw; }),  backgroundColor:'rgba(15,110,86,0.75)',  borderRadius:3, stack:'s' },
+        { label:'Liquor',    data:monthData.map(function(m){ return m.liq; }), backgroundColor:'rgba(24,95,165,0.75)', borderRadius:3, stack:'s' }
+      ]
+    },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: {
+        legend:{ display:true, labels:{ color:tc, font:{size:11}, boxWidth:12, padding:14 } },
+        tooltip:{ callbacks:{ footer:function(items){ return 'Total: '+fmtFull(items.reduce(function(a,i){ return a+i.raw; },0)); } } }
+      },
+      scales: {
+        x:{ stacked:true, ticks:{ color:tc, font:{size:9}, maxRotation:45, autoSkip:false }, grid:{color:gc} },
+        y:{ stacked:true, ticks:{ color:tc, font:{size:10}, callback:function(v){ return fmt(v); } }, grid:{color:gc} }
       }
     }
   });
